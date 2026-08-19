@@ -1,12 +1,10 @@
-import time
-from pathlib import Path
-from typing_extensions import Annotated
-
 import typer
 from rich.console import Console
 
 from .repository import Repository
 from .scanner import discover_files
+from .detector.detector import detect_mcp
+from .rules import RULES, run_security_rules
 
 
 app = typer.Typer(
@@ -22,89 +20,181 @@ def print_banner():
     console.print("[dim]Analyze and audit MCP servers[/dim]\n")
 
 
-@app.command(help="Scan an MCP server repository.")
-def scan(
-    path: Annotated[
-        str,
-        typer.Argument(help="Path to the MCP server repository"),
-    ]
-):
-    """Scan a repository and display a basic summary."""
+@app.command()
+def scan(path: str):
+    """
+    Scan a repository for MCP server implementation and security issues.
+    """
+
+    # ---------------------------------------------------------
+    # Banner
+    # ---------------------------------------------------------
 
     print_banner()
 
-    repo_path = Path(path)
+    console.print(f"[dim]Scanning:[/dim] {path}\n")
 
-    # Check that the path exists
-    if not repo_path.exists():
-        console.print(
-            f"[red]✗ Directory does not exist:[/red] {repo_path}"
-        )
-        raise typer.Exit(code=1)
+    # ---------------------------------------------------------
+    # Step 1: Discover source files
+    # ---------------------------------------------------------
 
-    # Check that the path is actually a directory
-    if not repo_path.is_dir():
-        console.print(
-            f"[red]✗ Path is not a directory:[/red] {repo_path}"
-        )
-        raise typer.Exit(code=1)
+    files = discover_files(path)
 
     console.print(
-        f"[cyan]Scanning:[/cyan] {repo_path.resolve()}\n"
+        f"[dim]Found {len(files)} source files[/dim]\n"
     )
 
-    start = time.perf_counter()
+    # ---------------------------------------------------------
+    # Step 2: Create repository object
+    # ---------------------------------------------------------
 
-    # Discover source files
-    files = discover_files(repo_path)
-
-    # Create repository model
     repository = Repository(
-        root=repo_path,
+        root=path,
         files=files,
     )
 
-    elapsed = time.perf_counter() - start
+    # ---------------------------------------------------------
+    # Step 3: Detect MCP server
+    # ---------------------------------------------------------
 
-    # Repository summary
-    console.print("[bold]Repository Summary[/bold]\n")
+    result = detect_mcp(repository)
+
+    console.print("[bold]MCP Detection[/bold]")
+    console.rule()
+
+    if result.detected:
+
+        console.print(
+            "[green]✓ MCP Server Detected[/green]\n"
+        )
+
+        console.print(
+            f"Language     : {result.language}"
+        )
+
+        console.print(
+            f"Framework    : {result.framework}"
+        )
+
+        console.print(
+            f"Confidence   : {result.confidence}"
+        )
+
+    else:
+
+        console.print(
+            "[yellow]⚠ No MCP server detected[/yellow]"
+        )
+
+    # ---------------------------------------------------------
+    # Step 4: Run security rules
+    # ---------------------------------------------------------
+
+    findings = run_security_rules(files)
+
+    # ---------------------------------------------------------
+    # Step 5: Display security findings
+    # ---------------------------------------------------------
+
+    console.print("\n[bold]Security Findings[/bold]")
+    console.rule()
+
+    if findings:
+
+        console.print(
+            f"[red]Found {len(findings)} security issue(s)[/red]\n"
+        )
+
+        for finding in findings:
+
+            severity = finding.severity.upper()
+
+            # Choose display style based on severity
+            if severity == "CRITICAL":
+                severity_style = "bold red"
+            elif severity == "HIGH":
+                severity_style = "bold yellow"
+            elif severity == "MEDIUM":
+                severity_style = "bold blue"
+            else:
+                severity_style = "bold white"
+
+            console.print(
+                f"[{severity_style}]{severity}[/{severity_style}] "
+                f"[bold]{finding.rule_id}[/bold] "
+                f"{finding.title}"
+            )
+
+            console.print(
+                f"File           : {finding.file}"
+            )
+
+            console.print(
+                f"Description    : {finding.description}"
+            )
+
+            console.print(
+                f"Recommendation : {finding.recommendation}\n"
+            )
+
+    else:
+
+        console.print(
+            "[green]✓ No security findings detected[/green]"
+        )
+
+    # ---------------------------------------------------------
+    # Step 6: Security summary
+    # ---------------------------------------------------------
+
+    console.print("\n[bold]Summary[/bold]")
+    console.rule()
+
+    severity_counts = {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 0,
+        "LOW": 0,
+    }
+
+    for finding in findings:
+
+        severity = finding.severity.upper()
+
+        if severity in severity_counts:
+            severity_counts[severity] += 1
 
     console.print(
-        f"Python files       {len(repository.python_files)}"
+        f"Rules Run       : {len(RULES)}"
     )
 
     console.print(
-        f"JavaScript files   {len(repository.javascript_files)}"
+        f"Total Findings  : {len(findings)}"
     )
 
     console.print(
-        f"TypeScript files   {len(repository.typescript_files)}"
+        f"CRITICAL        : {severity_counts['CRITICAL']}"
     )
 
     console.print(
-        f"Dockerfiles        {len(repository.dockerfiles)}"
+        f"HIGH            : {severity_counts['HIGH']}"
     )
 
     console.print(
-        f"package.json       "
-        f"{'✓' if repository.has_package_json else '✗'}"
+        f"MEDIUM          : {severity_counts['MEDIUM']}"
     )
 
     console.print(
-        f"requirements.txt   "
-        f"{'✓' if repository.has_requirements_txt else '✗'}"
-    )
-
-    console.print(
-        f"\n[green]✓[/green] Scan completed in "
-        f"[bold]{elapsed:.2f}s[/bold]"
+        f"LOW             : {severity_counts['LOW']}"
     )
 
 
-@app.command(help="Display the current MCP Sentinel version.")
+@app.command(
+    help="Display the current MCP Sentinel version."
+)
 def version():
     """Print the current version."""
-    typer.echo("MCP Sentinel v0.1.0")
+    typer.echo("MCP Sentinel v0.2.0")
 
 
 if __name__ == "__main__":
