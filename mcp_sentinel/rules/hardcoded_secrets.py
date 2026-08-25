@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 
+from ..analysis.ast_utils import get_mcp_tools, parse_file
 from ..findings.models import SecurityFinding
 
 
@@ -17,18 +18,55 @@ SECRET_PATTERNS = [
 ]
 
 
+def _find_tool_for_line(
+    tools,
+    line_number: int,
+):
+    """
+    Return the MCP tool containing the given line, if any.
+    """
+
+    for tool in tools:
+
+        if not hasattr(tool.node, "end_lineno"):
+            continue
+
+        if (
+            tool.node.lineno
+            <= line_number
+            <= tool.node.end_lineno
+        ):
+            return tool
+
+    return None
+
+
 def detect_hardcoded_secrets(
     files: list[Path],
 ) -> list[SecurityFinding]:
+    """
+    MCP-002: Detect potential hardcoded secrets.
 
-    findings = []
+    Secrets can exist at module level or inside an MCP tool.
+    """
+
+    findings: list[SecurityFinding] = []
 
     for file in files:
 
         try:
             source = file.read_text(errors="ignore")
-        except Exception:
+        except OSError:
             continue
+
+        # Parse the file so we can determine whether a secret
+        # exists inside an MCP tool.
+        tree = parse_file(file)
+
+        tools = []
+
+        if tree is not None:
+            tools = get_mcp_tools(tree, file)
 
         for line_number, line in enumerate(
             source.splitlines(),
@@ -51,8 +89,6 @@ def detect_hardcoded_secrets(
                 continue
 
             # Only flag exact credential-like variable names.
-            # This prevents false positives such as:
-            # API_KEY_NAME = "my-api-key"
             is_secret_variable = any(
                 re.match(
                     pattern,
@@ -65,16 +101,23 @@ def detect_hardcoded_secrets(
             if not is_secret_variable:
                 continue
 
+            # Determine whether the secret belongs to an MCP tool.
+            tool = _find_tool_for_line(
+                tools,
+                line_number,
+            )
+
             findings.append(
                 SecurityFinding(
                     rule_id="MCP-002",
                     title="Hardcoded Secret",
                     severity="HIGH",
                     file=str(file),
+                    line=line_number,
+                    tool=tool.name if tool else None,
                     description=(
                         f"Potential hardcoded secret found in "
-                        f"variable '{variable_name}' "
-                        f"at line {line_number}."
+                        f"variable '{variable_name}'."
                     ),
                     recommendation=(
                         "Remove the secret from source code and "

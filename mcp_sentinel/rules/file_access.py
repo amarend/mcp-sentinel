@@ -1,6 +1,11 @@
 from pathlib import Path
 import ast
 
+from ..analysis.ast_utils import (
+    get_mcp_tools,
+    get_name_calls,
+    parse_file,
+)
 from ..findings.models import SecurityFinding
 
 
@@ -12,44 +17,16 @@ def detect_unsafe_file_access(
 
     for file in files:
 
-        try:
-            source = file.read_text(errors="ignore")
-            tree = ast.parse(source)
-        except (OSError, SyntaxError):
+        tree = parse_file(file)
+
+        if tree is None:
             continue
 
-        for node in ast.walk(tree):
+        for tool in get_mcp_tools(tree, file):
 
-            if not isinstance(node, ast.FunctionDef):
-                continue
+            for call in get_name_calls(tool.node):
 
-            # Check whether this function is an MCP tool
-            is_mcp_tool = any(
-                (
-                    isinstance(decorator, ast.Call)
-                    and isinstance(decorator.func, ast.Attribute)
-                    and decorator.func.attr == "tool"
-                )
-                or (
-                    isinstance(decorator, ast.Attribute)
-                    and decorator.attr == "tool"
-                )
-                for decorator in node.decorator_list
-            )
-
-            if not is_mcp_tool:
-                continue
-
-            # Look for open(...)
-            for child in ast.walk(node):
-
-                if not isinstance(child, ast.Call):
-                    continue
-
-                if not isinstance(child.func, ast.Name):
-                    continue
-
-                if child.func.id != "open":
+                if call.func.id != "open":
                     continue
 
                 findings.append(
@@ -59,14 +36,14 @@ def detect_unsafe_file_access(
                         severity="HIGH",
                         file=str(file),
                         description=(
-                            f"MCP tool '{node.name}' directly accesses "
-                            "the filesystem using open()."
+                            f"MCP tool '{tool.name}' directly "
+                            "accesses the filesystem using open()."
                         ),
                         recommendation=(
                             "Restrict file access to an explicit "
                             "allowlist of directories or files. "
-                            "Validate and normalize user-provided paths "
-                            "before accessing the filesystem."
+                            "Validate and normalize user-provided "
+                            "paths before accessing the filesystem."
                         ),
                     )
                 )
