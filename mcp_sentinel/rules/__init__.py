@@ -6,6 +6,7 @@ from .ssrf import detect_ssrf
 from .dangerous_capability import detect_dangerous_capabilities
 from .tool_poisoning import detect_tool_poisoning
 from .prompt_intection import detect_prompt_injection
+from .deserialization import detect_unsafe_deserialization
 
 RULES = [
     detect_command_execution,
@@ -15,6 +16,8 @@ RULES = [
     detect_ssrf,
     detect_dangerous_capabilities,
     detect_tool_poisoning,
+    detect_prompt_injection,
+    detect_unsafe_deserialization,
 ]
 
 

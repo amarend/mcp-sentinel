@@ -19,6 +19,9 @@ from mcp_sentinel.rules.tool_poisoning import (
 from mcp_sentinel.rules.prompt_intection import (
     detect_prompt_injection,
 )
+from mcp_sentinel.rules.deserialization import (
+    detect_unsafe_deserialization,
+)
 
 def test_detects_shell_command_execution(tmp_path: Path):
     """MCP-001 should detect subprocess execution with shell=True."""
@@ -605,3 +608,105 @@ def process_request(instruction: str):
     ]
 
     assert len(matching_findings) == 1
+
+def test_detects_pickle_load(tmp_path: Path):
+    """MCP-009 should detect pickle.load()."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import pickle
+
+
+def load_data(file):
+    return pickle.load(file)
+"""
+    )
+
+    findings = detect_unsafe_deserialization(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-009"
+    assert finding.severity == "CRITICAL"
+def test_detects_pickle_loads(tmp_path: Path):
+    """MCP-009 should detect pickle.loads()."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import pickle
+
+
+def load_data(data):
+    return pickle.loads(data)
+"""
+    )
+
+    findings = detect_unsafe_deserialization(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    assert findings[0].rule_id == "MCP-009"
+def test_does_not_flag_yaml_safe_load(tmp_path: Path):
+    """MCP-009 should not flag yaml.safe_load()."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import yaml
+
+
+def load_config(data):
+    return yaml.safe_load(data)
+"""
+    )
+
+    findings = detect_unsafe_deserialization(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_unsafe_deserialization(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-009."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import pickle
+
+
+def load_data(data):
+    return pickle.loads(data)
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-009"
+    ]
+
+    assert len(matching_findings) == 1
+
+    finding = matching_findings[0]
+
+    assert finding.rule_id == "MCP-009"
+    assert finding.severity == "CRITICAL"
