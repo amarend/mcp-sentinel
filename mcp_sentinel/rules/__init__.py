@@ -7,7 +7,8 @@ from .dangerous_capability import detect_dangerous_capabilities
 from .tool_poisoning import detect_tool_poisoning
 from .prompt_intection import detect_prompt_injection
 from .deserialization import detect_unsafe_deserialization
-
+from .dynamic_execution import detect_dynamic_execution
+\
 RULES = [
     detect_command_execution,
     detect_hardcoded_secrets,
@@ -18,6 +19,7 @@ RULES = [
     detect_tool_poisoning,
     detect_prompt_injection,
     detect_unsafe_deserialization,
+    detect_dynamic_execution,
 ]
 
 

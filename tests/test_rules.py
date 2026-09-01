@@ -22,6 +22,9 @@ from mcp_sentinel.rules.prompt_intection import (
 from mcp_sentinel.rules.deserialization import (
     detect_unsafe_deserialization,
 )
+from mcp_sentinel.rules.dynamic_execution import (
+    detect_dynamic_execution,
+)
 
 def test_detects_shell_command_execution(tmp_path: Path):
     """MCP-001 should detect subprocess execution with shell=True."""
@@ -710,3 +713,91 @@ def load_data(data):
 
     assert finding.rule_id == "MCP-009"
     assert finding.severity == "CRITICAL"
+
+def test_detects_eval(tmp_path: Path):
+    """MCP-010 should detect eval()."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+def execute(expression):
+    return eval(expression)
+"""
+    )
+
+    findings = detect_dynamic_execution(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-010"
+    assert finding.severity == "CRITICAL"
+def test_detects_exec(tmp_path: Path):
+    """MCP-010 should detect exec()."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+def execute(code):
+    exec(code)
+"""
+    )
+
+    findings = detect_dynamic_execution(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    assert findings[0].rule_id == "MCP-010"
+
+def test_does_not_flag_normal_function(tmp_path: Path):
+    """MCP-010 should not flag normal function calls."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+def calculate(value):
+    return str(value)
+"""
+    )
+
+    findings = detect_dynamic_execution(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_dynamic_execution(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-010."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+def execute(code):
+    return eval(code)
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-010"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "CRITICAL"
