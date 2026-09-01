@@ -25,6 +25,18 @@ from mcp_sentinel.rules.deserialization import (
 from mcp_sentinel.rules.dynamic_execution import (
     detect_dynamic_execution,
 )
+from mcp_sentinel.rules.path_traversal import (
+    detect_path_traversal,
+)
+from mcp_sentinel.rules.unrestricted_destination import (
+    detect_unrestricted_destination,
+)
+from mcp_sentinel.rules.environment_exposure import (
+    detect_sensitive_environment_exposure,
+)
+from mcp_sentinel.rules.excessive_capability import (
+    detect_excessive_tool_capability,
+)
 
 def test_detects_shell_command_execution(tmp_path: Path):
     """MCP-001 should detect subprocess execution with shell=True."""
@@ -238,7 +250,16 @@ def read_file(path: str) -> str:
 
     findings = run_security_rules([server_file])
 
-    assert len(findings) == 1
+    matching_findings = [
+    finding
+    for finding in findings
+    if finding.rule_id == "MCP-003"
+]
+
+    assert len(matching_findings) == 1
+
+    finding = matching_findings[0]
+
     assert findings[0].rule_id == "MCP-003"
     assert findings[0].severity == "HIGH"
 
@@ -801,3 +822,406 @@ def execute(code):
     assert len(matching_findings) == 1
 
     assert matching_findings[0].severity == "CRITICAL"
+
+def test_detects_path_traversal(
+    tmp_path: Path,
+):
+    """MCP-011 should detect user-controlled file paths."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_file(path: str) -> str:
+    with open(path, "r") as f:
+        return f.read()
+"""
+    )
+
+    findings = detect_path_traversal(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-011"
+    assert finding.severity == "HIGH"
+
+def test_does_not_flag_fixed_file_path(
+    tmp_path: Path,
+):
+    """MCP-011 should not flag a fixed file path."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_config() -> str:
+    with open("/app/config/settings.json", "r") as f:
+        return f.read()
+"""
+    )
+
+    findings = detect_path_traversal(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_path_traversal(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-011."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_file(path: str) -> str:
+    with open(path, "r") as f:
+        return f.read()
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-011"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "HIGH"
+
+def test_detects_unrestricted_destination(
+    tmp_path: Path,
+):
+    """MCP-012 should detect an unrestricted network destination."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Network Server")
+
+
+@mcp.tool()
+def fetch_url(url: str):
+    return requests.get(url)
+"""
+    )
+
+    findings = detect_unrestricted_destination(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-012"
+    assert finding.severity == "HIGH"
+
+def test_does_not_flag_fixed_destination(
+    tmp_path: Path,
+):
+    """MCP-012 should not flag a fixed destination."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Network Server")
+
+
+@mcp.tool()
+def fetch_weather():
+    return requests.get(
+        "https://api.example.com/weather"
+    )
+"""
+    )
+
+    findings = detect_unrestricted_destination(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_unrestricted_destination(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-012."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Network Server")
+
+
+@mcp.tool()
+def fetch_url(url: str):
+    return requests.get(url)
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-012"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "HIGH"
+
+
+def test_detects_sensitive_environment_exposure(
+    tmp_path: Path,
+):
+    """MCP-013 should detect exposure of a sensitive environment variable."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import os
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Sensitive Server")
+
+
+@mcp.tool()
+def get_api_key():
+    return os.getenv("API_KEY")
+"""
+    )
+
+    findings = detect_sensitive_environment_exposure(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-013"
+    assert finding.title == "Sensitive Environment Exposure"
+    assert finding.severity == "CRITICAL"
+    assert finding.file == str(server_file)
+
+def test_does_not_flag_normal_environment_variable(
+    tmp_path: Path,
+):
+    """MCP-013 should not flag non-sensitive environment variables."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import os
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Safe Server")
+
+
+@mcp.tool()
+def get_log_level():
+    return os.getenv("LOG_LEVEL")
+"""
+    )
+
+    findings = detect_sensitive_environment_exposure(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_sensitive_environment_exposure(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-013."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import os
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Sensitive Server")
+
+
+@mcp.tool()
+def get_api_key():
+    return os.getenv("API_KEY")
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-013"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "CRITICAL"
+
+def test_detects_excessive_tool_capability(
+    tmp_path: Path,
+):
+    """MCP-014 should detect a tool with multiple high-risk capabilities."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import subprocess
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Dangerous Server")
+
+
+@mcp.tool()
+def admin_tool(command: str, url: str):
+    subprocess.run(
+        command,
+        shell=True,
+    )
+
+    return requests.get(url).text
+"""
+    )
+
+    findings = detect_excessive_tool_capability(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-014"
+    assert finding.title == "Excessive Tool Capability"
+    assert finding.severity == "HIGH"
+
+def test_does_not_flag_single_tool_capability(
+    tmp_path: Path,
+):
+    """MCP-014 should not flag a narrowly scoped tool."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Safe Server")
+
+
+@mcp.tool()
+def fetch_weather(url: str):
+    return requests.get(url)
+"""
+    )
+
+    findings = detect_excessive_tool_capability(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_excessive_tool_capability(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-014."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+import subprocess
+import requests
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("Dangerous Server")
+
+
+@mcp.tool()
+def admin_tool(command: str, url: str):
+    subprocess.run(
+        command,
+        shell=True,
+    )
+
+    return requests.get(url).text
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-014"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "HIGH"

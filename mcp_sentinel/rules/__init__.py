@@ -8,7 +8,20 @@ from .tool_poisoning import detect_tool_poisoning
 from .prompt_intection import detect_prompt_injection
 from .deserialization import detect_unsafe_deserialization
 from .dynamic_execution import detect_dynamic_execution
-\
+from .path_traversal import detect_path_traversal
+from .unrestricted_destination import (
+    detect_unrestricted_destination,
+)
+from .environment_exposure import (
+    detect_sensitive_environment_exposure,
+)
+from .excessive_capability import (
+    detect_excessive_tool_capability,
+)
+from .input_validation import (
+    detect_missing_input_validation,
+)
+
 RULES = [
     detect_command_execution,
     detect_hardcoded_secrets,
@@ -20,6 +33,11 @@ RULES = [
     detect_prompt_injection,
     detect_unsafe_deserialization,
     detect_dynamic_execution,
+    detect_path_traversal,
+    detect_unrestricted_destination,
+    detect_sensitive_environment_exposure,
+    detect_excessive_tool_capability,
+    detect_missing_input_validation,
 ]
 
 
