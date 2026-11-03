@@ -6,6 +6,7 @@ from ..analysis.ast_utils import (
     get_mcp_tools,
     parse_file,
 )
+from ..analysis.taint import expr_is_tainted
 from ..findings.models import SecurityFinding
 
 
@@ -40,8 +41,6 @@ def detect_ssrf(
 
         for tool in get_mcp_tools(tree, file):
 
-            parameters = tool.parameters
-
             for call in get_attribute_calls(tool.node):
 
                 if call.func.attr not in NETWORK_FUNCTIONS:
@@ -53,25 +52,16 @@ def detect_ssrf(
                 if call.func.value.id not in NETWORK_MODULES:
                     continue
 
-                user_controlled = False
-
-                # Positional arguments
-                for argument in call.args:
-
-                    if (
-                        isinstance(argument, ast.Name)
-                        and argument.id in parameters
-                    ):
-                        user_controlled = True
-
-                # Keyword arguments
-                for keyword in call.keywords:
-
-                    if (
-                        isinstance(keyword.value, ast.Name)
-                        and keyword.value.id in parameters
-                    ):
-                        user_controlled = True
+                # Taint-aware: parameters plus values derived from them
+                # (f-strings, assignments, arguments["url"], ...).
+                user_controlled = any(
+                    expr_is_tainted(argument, tool.tainted)
+                    for argument in call.args
+                ) or any(
+                    keyword.arg in {"url", None}
+                    and expr_is_tainted(keyword.value, tool.tainted)
+                    for keyword in call.keywords
+                )
 
                 if not user_controlled:
                     continue
@@ -82,6 +72,8 @@ def detect_ssrf(
                         title="Potential SSRF",
                         severity="HIGH",
                         file=str(file),
+                        line=call.lineno,
+                        tool=tool.name,
                         description=(
                             f"MCP tool '{tool.name}' passes "
                             "user-controlled input to an outbound "

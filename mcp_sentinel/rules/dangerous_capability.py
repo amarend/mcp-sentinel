@@ -48,6 +48,8 @@ def detect_dangerous_capabilities(
                     title="Dangerous Tool Capability",
                     severity="HIGH",
                     file=str(file),
+                    line=tool.line,
+                    tool=tool.name,
                     description=(
                         f"MCP tool '{tool.name}' exposes a "
                         "potentially privileged system capability."

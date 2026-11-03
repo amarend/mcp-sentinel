@@ -31,3 +31,8 @@ dist/
 
 # Logs
 *.log
+# Cloned third-party servers used for manual testing
+mcp-real-servers/
+
+# Scan output
+*.sarif

@@ -35,6 +35,8 @@ def detect_unsafe_file_access(
                         title="Unsafe File Access",
                         severity="HIGH",
                         file=str(file),
+                        line=call.lineno,
+                        tool=tool.name,
                         description=(
                             f"MCP tool '{tool.name}' directly "
                             "accesses the filesystem using open()."

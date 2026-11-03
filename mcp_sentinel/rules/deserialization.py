@@ -73,6 +73,7 @@ def detect_unsafe_deserialization(
                     title="Unsafe Deserialization",
                     severity="CRITICAL",
                     file=str(file),
+                    line=node.lineno,
                     description=(
                         f"Potentially unsafe deserialization "
                         f"using {module_name}.{function_name}() "

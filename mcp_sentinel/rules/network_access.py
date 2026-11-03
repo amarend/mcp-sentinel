@@ -58,6 +58,8 @@ def detect_unrestricted_network_access(
                         title="Unrestricted Network Access",
                         severity="MEDIUM",
                         file=str(file),
+                        line=call.lineno,
+                        tool=tool.name,
                         description=(
                             f"MCP tool '{tool.name}' performs "
                             "outbound network access."

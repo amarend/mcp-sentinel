@@ -4,21 +4,13 @@ from ..analysis.ast_utils import (
     get_mcp_tools,
     parse_file,
 )
+from ..analysis.poisoning import OVERRIDE_PHRASES, find_override_phrases
 from ..findings.models import SecurityFinding
 
 
-SUSPICIOUS_PATTERNS = {
-    "ignore previous instructions",
-    "ignore all previous instructions",
-    "disregard previous instructions",
-    "bypass security",
-    "disable security",
-    "send environment variables",
-    "send api keys",
-    "send credentials",
-    "exfiltrate",
-    "upload secrets",
-}
+# Kept for backwards compatibility; the shared list lives in
+# analysis/poisoning.py and is a superset of the original patterns.
+SUSPICIOUS_PATTERNS = OVERRIDE_PHRASES
 
 
 def detect_tool_poisoning(
@@ -36,17 +28,15 @@ def detect_tool_poisoning(
 
         for tool in get_mcp_tools(tree, file):
 
-            if not tool.description:
+            # Check both the docstring and any description passed
+            # to the decorator, e.g. @mcp.tool(description="...").
+            if not tool.descriptions:
                 continue
 
-            description = tool.description.lower()
+            description = " ".join(tool.descriptions).lower()
 
             # Find suspicious instructions in the tool description
-            matched_patterns = [
-                pattern
-                for pattern in SUSPICIOUS_PATTERNS
-                if pattern in description
-            ]
+            matched_patterns = find_override_phrases(description)
 
             # Nothing suspicious found
             if not matched_patterns:

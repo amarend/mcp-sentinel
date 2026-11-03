@@ -98,6 +98,8 @@ def detect_excessive_tool_capability(
                     title="Excessive Tool Capability",
                     severity="HIGH",
                     file=str(file),
+                    line=tool.line,
+                    tool=tool.name,
                     description=(
                         f"MCP tool '{tool.name}' combines multiple "
                         f"high-risk capabilities: {capability_list}."

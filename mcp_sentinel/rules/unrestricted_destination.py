@@ -72,7 +72,7 @@ def detect_unrestricted_destination(
 
                 if (
                     isinstance(destination, ast.Name)
-                    and destination.id in parameters
+                    and destination.id in tool.tainted
                 ):
 
                     findings.append(
@@ -81,6 +81,8 @@ def detect_unrestricted_destination(
                             title="Unrestricted URL/Destination",
                             severity="HIGH",
                             file=str(file),
+                            line=node.lineno,
+                            tool=tool.name,
                             description=(
                                 f"MCP tool '{tool.name}' uses the "
                                 f"user-controlled parameter "

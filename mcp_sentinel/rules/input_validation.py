@@ -77,7 +77,7 @@ def detect_missing_input_validation(
 
                     if (
                         isinstance(argument, ast.Name)
-                        and argument.id in parameters
+                        and argument.id in tool.tainted
                     ):
 
                         findings.append(
@@ -86,6 +86,8 @@ def detect_missing_input_validation(
                                 title="Missing Input Validation",
                                 severity="HIGH",
                                 file=str(file),
+                                line=node.lineno,
+                                tool=tool.name,
                                 description=(
                                     f"MCP tool '{tool.name}' passes "
                                     f"user-controlled parameter "

@@ -1,2 +1,0 @@
-[console_scripts]
-mcp-sentinel = mcp_sentinel.cli:app

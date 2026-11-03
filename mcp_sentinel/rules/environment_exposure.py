@@ -90,6 +90,8 @@ def detect_sensitive_environment_exposure(
                         title="Sensitive Environment Exposure",
                         severity="CRITICAL",
                         file=str(file),
+                        line=node.lineno,
+                        tool=tool.name,
                         description=(
                             f"MCP tool '{tool.name}' accesses the "
                             f"sensitive environment variable "

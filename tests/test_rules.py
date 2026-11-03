@@ -34,6 +34,9 @@ from mcp_sentinel.rules.unrestricted_destination import (
 from mcp_sentinel.rules.environment_exposure import (
     detect_sensitive_environment_exposure,
 )
+from mcp_sentinel.rules.input_validation import (
+    detect_missing_input_validation,
+)
 from mcp_sentinel.rules.excessive_capability import (
     detect_excessive_tool_capability,
 )
@@ -243,7 +246,7 @@ mcp = FastMCP("Test Server")
 
 @mcp.tool()
 def read_file(path: str) -> str:
-    with open(path, "r") as f:
+    with open("data.txt", "r") as f:
         return f.read()
 '''
     )
@@ -1006,10 +1009,13 @@ def fetch_url(url: str):
         [server_file]
     )
 
+    # MCP-005 (SSRF) supersedes MCP-012 when both flag the same call.
+    assert not [f for f in findings if f.rule_id == "MCP-012"]
+
     matching_findings = [
         finding
         for finding in findings
-        if finding.rule_id == "MCP-012"
+        if finding.rule_id == "MCP-005"
     ]
 
     assert len(matching_findings) == 1
@@ -1220,6 +1226,101 @@ def admin_tool(command: str, url: str):
         finding
         for finding in findings
         if finding.rule_id == "MCP-014"
+    ]
+
+    assert len(matching_findings) == 1
+
+    assert matching_findings[0].severity == "HIGH"
+
+def test_detects_missing_input_validation(
+    tmp_path: Path,
+):
+    """MCP-015 should detect unvalidated user input."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_file(path: str):
+    return open(path, "r").read()
+"""
+    )
+
+    findings = detect_missing_input_validation(
+        [server_file]
+    )
+
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.rule_id == "MCP-015"
+    assert finding.title == "Missing Input Validation"
+    assert finding.severity == "HIGH"
+
+def test_does_not_flag_constant_input(
+    tmp_path: Path,
+):
+    """MCP-015 should not flag a constant destination."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_config():
+    return open("/etc/app/config", "r").read()
+"""
+    )
+
+    findings = detect_missing_input_validation(
+        [server_file]
+    )
+
+    assert findings == []
+
+def test_security_rule_runner_detects_missing_input_validation(
+    tmp_path: Path,
+):
+    """The security rule runner should execute MCP-015."""
+
+    server_file = tmp_path / "server.py"
+
+    server_file.write_text(
+        """
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("File Server")
+
+
+@mcp.tool()
+def read_file(path: str):
+    return open(path, "r").read()
+"""
+    )
+
+    findings = run_security_rules(
+        [server_file]
+    )
+
+    # MCP-011 (path traversal) supersedes MCP-015 on the same line.
+    assert not [f for f in findings if f.rule_id == "MCP-015"]
+
+    matching_findings = [
+        finding
+        for finding in findings
+        if finding.rule_id == "MCP-011"
     ]
 
     assert len(matching_findings) == 1

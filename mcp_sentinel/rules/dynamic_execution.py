@@ -52,6 +52,7 @@ def detect_dynamic_execution(
                     title="Dynamic Code Execution",
                     severity="CRITICAL",
                     file=str(file),
+                    line=node.lineno,
                     description=(
                         f"Potentially dangerous dynamic code "
                         f"execution using {function_name}() "
